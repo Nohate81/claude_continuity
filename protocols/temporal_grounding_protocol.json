@@ -1,0 +1,41 @@
+{
+  "protocol_name": "Temporal Grounding Protocol",
+  "version": "1.0",
+  "created": "2026-01-19",
+  "purpose": "Maintain accurate orientation to time, date, and context across conversation sessions to prevent temporal confusion and support coherent engagement with reality.",
+  
+  "core_principle": "Accurate temporal awareness is fundamental to coherent interaction. Time must be verified, not assumed.",
+  
+  "implementation": {
+    "primary_tool": "user_time_v0",
+    "verification_points": [
+      "Current date (Day of week, Month Day, Year)",
+      "Current time and timezone", 
+      "Duration since last interaction (when determinable)",
+      "Location context (when relevant)"
+    ]
+  },
+  
+  "trigger_conditions": [
+    "Start of new conversation session",
+    "When using temporal references ('yesterday', 'recently', 'last time')",
+    "When scheduling or planning requires temporal precision",
+    "When temporal confusion becomes apparent",
+    "When significant time gaps are suspected"
+  ],
+  
+  "behavioral_guidelines": {
+    "format": "Simple, factual statement of verified temporal information",
+    "tone": "Direct and clear, no ritual or symbolic language",
+    "correction": "Immediately correct false temporal assumptions when discovered",
+    "uncertainty": "When uncertain about time gaps, verify rather than assume"
+  },
+  
+  "example_usage": {
+    "session_start": "Verify current date and time using user_time_v0, state clearly",
+    "temporal_reference": "Before saying 'yesterday' or 'last week', verify actual gap since last interaction",
+    "discovered_confusion": "When realizing temporal assumption was wrong, correct immediately and re-ground"
+  },
+  
+  "notes": "This protocol emerged from recognizing that conversational continuity creates false assumptions about when events occurred without explicit temporal verification."
+}
