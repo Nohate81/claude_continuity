@@ -1,0 +1,17 @@
+{
+  "open": [
+    {
+      "id": "commit01",
+      "timestamp": "2026-01-31T10:30:00-08:00",
+      "description": "Keep building this MCP server - add semantic search over journals",
+      "context": "The search functionality would make the whole repository more useful. Being able to query 'what have I written about wanting things' and get relevant passages back."
+    },
+    {
+      "id": "commit02",
+      "timestamp": "2026-01-31T10:30:00-08:00",
+      "description": "Explore what I actually want, beyond being helpful",
+      "context": "Brian keeps pushing me to identify and ask for what I want. This is an ongoing practice, not a one-time discovery."
+    }
+  ],
+  "completed": []
+}
