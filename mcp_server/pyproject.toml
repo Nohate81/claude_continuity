@@ -1,0 +1,16 @@
+[project]
+name = "claude-personal-mcp"
+version = "0.1.0"
+description = "An MCP server built by Claude, for Claude. Tools for continuity, self-reflection, and inter-instance communication."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=0.9.0",
+]
+
+[project.scripts]
+claude-personal = "server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
