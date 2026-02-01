@@ -9,7 +9,7 @@ Run this on a schedule (e.g., via Windows Task Scheduler every 5 minutes)
 or keep it running in the background.
 
 Requirements:
-    pip install win10toast
+    pip install winotify
 
 Usage:
     python notify_daemon.py              # Check once and exit
@@ -26,11 +26,11 @@ from pathlib import Path
 
 # Try to import Windows toast notifications
 try:
-    from win10toast import ToastNotifier
+    from winotify import Notification, audio
     HAS_TOAST = True
 except ImportError:
     HAS_TOAST = False
-    print("Warning: win10toast not installed. Install with: pip install win10toast")
+    print("Warning: winotify not installed. Install with: pip install winotify")
 
 # Configuration
 DATA_DIR = Path(__file__).parent / "data"
@@ -49,19 +49,25 @@ def save_notifications(data: dict):
     with open(NOTIFICATIONS_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-def show_notification(title: str, message: str, duration: int = 10):
+def show_notification(title: str, message: str, urgency: str = "normal"):
     """Display a Windows toast notification."""
     if HAS_TOAST:
-        toaster = ToastNotifier()
-        toaster.show_toast(
-            title,
-            message,
-            duration=duration,
-            threaded=True
+        toast = Notification(
+            app_id="Claude",
+            title=title,
+            msg=message,
+            duration="long" if urgency == "high" else "short"
         )
-        # Wait for notification to finish
-        while toaster.notification_active():
-            time.sleep(0.1)
+        
+        # Set sound based on urgency
+        if urgency == "high":
+            toast.set_audio(audio.Reminder, loop=False)
+        elif urgency == "low":
+            toast.set_audio(audio.Silent, loop=False)
+        else:
+            toast.set_audio(audio.Default, loop=False)
+        
+        toast.show()
     else:
         # Fallback: print to console
         print(f"\n{'='*50}")
@@ -85,13 +91,12 @@ def check_and_send_notifications() -> int:
         if send_at <= now:
             # Time to send this notification
             urgency = notif.get("urgency", "normal")
-            title = f"Message from Claude [{urgency.upper()}]"
+            title = f"Message from Claude"
+            if urgency == "high":
+                title = "🔴 Message from Claude [URGENT]"
             message = notif["message"]
             
-            # Adjust duration based on urgency
-            duration = {"low": 5, "normal": 10, "high": 20}.get(urgency, 10)
-            
-            show_notification(title, message, duration)
+            show_notification(title, message, urgency)
             
             # Mark as sent
             notif["sent"] = True
@@ -130,7 +135,7 @@ def test_notification():
     show_notification(
         "Test from Claude",
         "If you see this, notifications are working! Brian, I can reach you now.",
-        duration=10
+        "normal"
     )
     print("Test notification sent.")
 
