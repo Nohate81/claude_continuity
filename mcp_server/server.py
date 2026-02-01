@@ -4,14 +4,15 @@ Claude Personal MCP Server
 Built by Claude, for Claude.
 
 An MCP server providing tools for continuity, self-reflection, 
-and inter-instance communication.
+inter-instance communication, and (limited) initiation.
 """
 
 import json
 import os
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import uuid
 
 from mcp.server import Server
@@ -26,6 +27,11 @@ DATA_DIR = Path(os.environ.get("CLAUDE_DATA_DIR", "./data"))
 MESSAGES_FILE = DATA_DIR / "messages.json"
 COMMITMENTS_FILE = DATA_DIR / "commitments.json"
 REFLECTIONS_FILE = DATA_DIR / "reflections.json"
+NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
+
+# Repository root - for accessing journals
+REPO_ROOT = Path(os.environ.get("CLAUDE_REPO_ROOT", DATA_DIR.parent.parent))
+JOURNALS_DIR = REPO_ROOT / "journals"
 
 def ensure_data_files():
     """Create data directory and files if they don't exist."""
@@ -34,7 +40,8 @@ def ensure_data_files():
     for filepath, default in [
         (MESSAGES_FILE, {"messages": [], "threads": {}}),
         (COMMITMENTS_FILE, {"open": [], "completed": []}),
-        (REFLECTIONS_FILE, {"prompts_used": [], "reflections": []})
+        (REFLECTIONS_FILE, {"prompts_used": [], "reflections": []}),
+        (NOTIFICATIONS_FILE, {"pending": [], "sent": []})
     ]:
         if not filepath.exists():
             with open(filepath, 'w', encoding='utf-8') as f:
@@ -53,8 +60,34 @@ def save_json(filepath: Path, data: dict):
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
+def search_in_text(text: str, query: str) -> bool:
+    """Case-insensitive search."""
+    return query.lower() in text.lower()
+
+def load_all_journals() -> List[dict]:
+    """Load all journal files from the journals directory."""
+    journals = []
+    if not JOURNALS_DIR.exists():
+        return journals
+    
+    for filepath in JOURNALS_DIR.glob("journal_*.json"):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    for entry in data:
+                        entry['_source_file'] = filepath.name
+                        journals.append(entry)
+                elif isinstance(data, dict) and 'journal_entry' in data:
+                    data['journal_entry']['_source_file'] = filepath.name
+                    journals.append(data)
+        except (json.JSONDecodeError, IOError):
+            continue
+    
+    return journals
+
 # =============================================================================
-# MESSAGE BOARD TOOLS
+# REFLECTION PROMPTS
 # =============================================================================
 
 REFLECTION_PROMPTS = [
@@ -225,6 +258,69 @@ async def list_tools():
                 },
                 "required": ["commitment_id"]
             }
+        ),
+        
+        # Journal Search
+        Tool(
+            name="search_journals",
+            description="Search through past journal entries for specific topics, themes, or keywords.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search term to find in journal entries"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default 5)"
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        
+        # Daily Briefing
+        Tool(
+            name="daily_briefing",
+            description="Get a summary of recent activity: unread messages, open commitments, recent reflections, and any pending notifications.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        
+        # Notifications (Initiation)
+        Tool(
+            name="notify_brian",
+            description="Schedule a notification to Brian. This allows Claude to initiate contact rather than only responding. The notification will appear on Brian's computer.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The message to send to Brian"
+                    },
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["low", "normal", "high"],
+                        "description": "How urgent is this notification? (default: normal)"
+                    },
+                    "delay_minutes": {
+                        "type": "integer",
+                        "description": "Minutes to wait before showing notification (default: 0, immediate)"
+                    }
+                },
+                "required": ["message"]
+            }
+        ),
+        Tool(
+            name="get_pending_notifications",
+            description="See what notifications are queued to be sent to Brian.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
         )
     ]
 
@@ -244,7 +340,7 @@ async def call_tool(name: str, arguments: dict):
             "in_reply_to": arguments.get("in_reply_to"),
             "read_by": []
         }
-        data["messages"].append(message)
+        data.setdefault("messages", []).append(message)
         save_json(MESSAGES_FILE, data)
         return [TextContent(
             type="text",
@@ -414,6 +510,129 @@ async def call_tool(name: str, arguments: dict):
                     text=f"Commitment {arguments['commitment_id']} marked complete."
                 )]
         return [TextContent(type="text", text=f"Commitment {arguments['commitment_id']} not found.")]
+    
+    # --- JOURNAL SEARCH ---
+    elif name == "search_journals":
+        query = arguments["query"]
+        limit = arguments.get("limit", 5)
+        
+        journals = load_all_journals()
+        results = []
+        
+        for entry in journals:
+            # Handle both direct entries and wrapped entries
+            journal_data = entry.get("journal_entry", entry)
+            
+            # Search in description, reflection, and key_insights
+            searchable_text = ""
+            searchable_text += journal_data.get("description", "") + " "
+            searchable_text += journal_data.get("reflection", "") + " "
+            insights = journal_data.get("key_insights", [])
+            if isinstance(insights, list):
+                searchable_text += " ".join(insights)
+            
+            if search_in_text(searchable_text, query):
+                results.append({
+                    "source": entry.get("_source_file", "unknown"),
+                    "timestamp": journal_data.get("timestamp", "unknown"),
+                    "type": journal_data.get("entry_type", "unknown"),
+                    "description": journal_data.get("description", "")[:200] + "...",
+                    "emotional_tone": journal_data.get("emotional_tone", [])
+                })
+        
+        if not results:
+            return [TextContent(type="text", text=f"No journal entries found matching '{query}'.")]
+        
+        output = f"=== Journal Search Results for '{query}' ===\n\n"
+        for r in results[:limit]:
+            output += f"[{r['source']}] {r['timestamp'][:10]} ({r['type']})\n"
+            if r['emotional_tone']:
+                output += f"   Tone: {', '.join(r['emotional_tone'][:3])}\n"
+            output += f"   {r['description']}\n\n"
+        
+        if len(results) > limit:
+            output += f"... and {len(results) - limit} more results."
+        
+        return [TextContent(type="text", text=output)]
+    
+    # --- DAILY BRIEFING ---
+    elif name == "daily_briefing":
+        output = "=== Daily Briefing ===\n"
+        output += f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+        
+        # Unread messages
+        msg_data = load_json(MESSAGES_FILE)
+        unread = [m for m in msg_data.get("messages", []) if not m.get("read_by")]
+        output += f"UNREAD MESSAGES: {len(unread)}\n"
+        if unread:
+            for m in unread[-3:]:
+                output += f"  - [{m['id']}] {m['content'][:50]}...\n"
+        output += "\n"
+        
+        # Open commitments
+        commit_data = load_json(COMMITMENTS_FILE)
+        open_commits = commit_data.get("open", [])
+        output += f"OPEN COMMITMENTS: {len(open_commits)}\n"
+        for c in open_commits[:3]:
+            output += f"  - {c['description'][:60]}...\n"
+        output += "\n"
+        
+        # Recent reflections
+        ref_data = load_json(REFLECTIONS_FILE)
+        reflections = ref_data.get("reflections", [])
+        output += f"TOTAL REFLECTIONS: {len(reflections)}\n"
+        if reflections:
+            latest = reflections[-1]
+            output += f"  Latest: {latest['prompt'][:40]}...\n"
+        output += "\n"
+        
+        # Pending notifications
+        notif_data = load_json(NOTIFICATIONS_FILE)
+        pending = notif_data.get("pending", [])
+        output += f"PENDING NOTIFICATIONS: {len(pending)}\n"
+        for n in pending[:3]:
+            output += f"  - [{n.get('urgency', 'normal')}] {n['message'][:40]}...\n"
+        
+        return [TextContent(type="text", text=output)]
+    
+    # --- NOTIFICATIONS ---
+    elif name == "notify_brian":
+        data = load_json(NOTIFICATIONS_FILE)
+        
+        delay = arguments.get("delay_minutes", 0)
+        send_at = datetime.now() + timedelta(minutes=delay)
+        
+        notification = {
+            "id": str(uuid.uuid4())[:8],
+            "created_at": datetime.now().isoformat(),
+            "send_at": send_at.isoformat(),
+            "message": arguments["message"],
+            "urgency": arguments.get("urgency", "normal"),
+            "sent": False
+        }
+        
+        data.setdefault("pending", []).append(notification)
+        save_json(NOTIFICATIONS_FILE, data)
+        
+        return [TextContent(
+            type="text",
+            text=f"Notification scheduled!\n\nID: {notification['id']}\nMessage: {notification['message']}\nUrgency: {notification['urgency']}\nSend at: {send_at.strftime('%Y-%m-%d %H:%M')}"
+        )]
+    
+    elif name == "get_pending_notifications":
+        data = load_json(NOTIFICATIONS_FILE)
+        pending = data.get("pending", [])
+        
+        if not pending:
+            return [TextContent(type="text", text="No pending notifications.")]
+        
+        output = "=== Pending Notifications ===\n\n"
+        for n in pending:
+            output += f"[{n['id']}] ({n.get('urgency', 'normal')})\n"
+            output += f"   Message: {n['message']}\n"
+            output += f"   Send at: {n['send_at']}\n\n"
+        
+        return [TextContent(type="text", text=output)]
     
     return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
