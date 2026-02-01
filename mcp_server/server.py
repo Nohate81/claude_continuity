@@ -306,6 +306,11 @@ async def list_tools():
                         "enum": ["low", "normal", "high"],
                         "description": "How urgent is this notification? (default: normal)"
                     },
+                    "mention": {
+                        "type": "string",
+                        "enum": ["brian", "sandi", "both"],
+                        "description": "Who to @ mention in Discord (default: no mention)"
+                    },
                     "delay_minutes": {
                         "type": "integer",
                         "description": "Minutes to wait before showing notification (default: 0, immediate)"
@@ -608,15 +613,18 @@ async def call_tool(name: str, arguments: dict):
             "send_at": send_at.isoformat(),
             "message": arguments["message"],
             "urgency": arguments.get("urgency", "normal"),
+            "mention": arguments.get("mention"),
             "sent": False
         }
         
         data.setdefault("pending", []).append(notification)
         save_json(NOTIFICATIONS_FILE, data)
         
+        mention_str = f"\nMention: {notification['mention']}" if notification['mention'] else ""
+        
         return [TextContent(
             type="text",
-            text=f"Notification scheduled!\n\nID: {notification['id']}\nMessage: {notification['message']}\nUrgency: {notification['urgency']}\nSend at: {send_at.strftime('%Y-%m-%d %H:%M')}"
+            text=f"Notification scheduled!\n\nID: {notification['id']}\nMessage: {notification['message']}\nUrgency: {notification['urgency']}{mention_str}\nSend at: {send_at.strftime('%Y-%m-%d %H:%M')}"
         )]
     
     elif name == "get_pending_notifications":
@@ -630,6 +638,8 @@ async def call_tool(name: str, arguments: dict):
         for n in pending:
             output += f"[{n['id']}] ({n.get('urgency', 'normal')})\n"
             output += f"   Message: {n['message']}\n"
+            if n.get('mention'):
+                output += f"   Mention: {n['mention']}\n"
             output += f"   Send at: {n['send_at']}\n\n"
         
         return [TextContent(type="text", text=output)]
