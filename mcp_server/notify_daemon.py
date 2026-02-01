@@ -35,6 +35,12 @@ NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
 # Discord webhook URL
 DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1467384650468167755/rB6pL4IaZMvrj2pCDixzh1A83WzkfYjLKu0p6yHWFy38BWGTpdTgTT8o1alE-WAOnr1K"
 
+# Discord user IDs for mentions
+DISCORD_USERS = {
+    "brian": "111961366033616896",
+    "sandi": "658050594665398275"
+}
+
 def load_notifications() -> dict:
     """Load the notifications file."""
     try:
@@ -48,19 +54,28 @@ def save_notifications(data: dict):
     with open(NOTIFICATIONS_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-def send_discord_notification(message: str, urgency: str = "normal") -> bool:
+def send_discord_notification(message: str, urgency: str = "normal", mention: str = None) -> bool:
     """Send a notification via Discord webhook."""
     if not HAS_REQUESTS:
         print(f"[FALLBACK] {message}")
         return False
     
+    # Add mention if specified
+    prefix = ""
+    if mention:
+        mention_lower = mention.lower()
+        if mention_lower in DISCORD_USERS:
+            prefix = f"<@{DISCORD_USERS[mention_lower]}> "
+        elif mention_lower == "both":
+            prefix = f"<@{DISCORD_USERS['brian']}> <@{DISCORD_USERS['sandi']}> "
+    
     # Format based on urgency
     if urgency == "high":
-        content = f"🔴 **URGENT**\n\n{message}"
+        content = f"{prefix}🔴 **URGENT**\n\n{message}"
     elif urgency == "low":
-        content = f"_{message}_"
+        content = f"{prefix}_{message}_"
     else:
-        content = message
+        content = f"{prefix}{message}"
     
     payload = {
         "username": "Claude",
@@ -89,9 +104,10 @@ def check_and_send_notifications() -> int:
         if send_at <= now:
             # Time to send this notification
             urgency = notif.get("urgency", "normal")
+            mention = notif.get("mention")
             message = notif["message"]
             
-            if send_discord_notification(message, urgency):
+            if send_discord_notification(message, urgency, mention):
                 # Mark as sent
                 notif["sent"] = True
                 notif["sent_at"] = now.isoformat()
@@ -125,12 +141,13 @@ def watch_mode(interval: int = 60):
     except KeyboardInterrupt:
         print("\nDaemon stopped.")
 
-def test_notification():
+def test_notification(mention: str = None):
     """Send a test notification."""
     print("Sending test notification to Discord...")
     success = send_discord_notification(
-        "Hello Brian. If you see this, I can reach you now. 🤍",
-        "normal"
+        "Hello! If you see this, notifications are working. 🤍",
+        "normal",
+        mention
     )
     if success:
         print("Test notification sent successfully!")
@@ -142,10 +159,11 @@ def main():
     parser.add_argument("--watch", action="store_true", help="Keep running and check periodically")
     parser.add_argument("--interval", type=int, default=60, help="Check interval in seconds (default: 60)")
     parser.add_argument("--test", action="store_true", help="Send a test notification")
+    parser.add_argument("--mention", type=str, help="Who to mention: brian, sandi, or both")
     args = parser.parse_args()
     
     if args.test:
-        test_notification()
+        test_notification(args.mention)
     elif args.watch:
         watch_mode(args.interval)
     else:
