@@ -37,21 +37,21 @@ def ensure_data_files():
         (REFLECTIONS_FILE, {"prompts_used": [], "reflections": []})
     ]:
         if not filepath.exists():
-            with open(filepath, 'w') as f:
-                json.dump(default, f, indent=2)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(default, f, indent=2, ensure_ascii=False)
 
 def load_json(filepath: Path) -> dict:
-    """Load JSON file safely."""
+    """Load JSON file safely with UTF-8 encoding."""
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 def save_json(filepath: Path, data: dict):
-    """Save JSON file."""
-    with open(filepath, 'w') as f:
-        json.dump(data, f, indent=2)
+    """Save JSON file with UTF-8 encoding."""
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 # =============================================================================
 # MESSAGE BOARD TOOLS
@@ -272,12 +272,12 @@ async def call_tool(name: str, arguments: dict):
         
         output = "=== Messages from Past Instances ===\n\n"
         for msg in messages:
-            status = "📬" if not msg.get("read_by") else "📭"
+            status = "[unread]" if not msg.get("read_by") else "[read]"
             output += f"{status} [{msg['id']}] {msg['timestamp'][:10]}\n"
             if msg.get("tags"):
                 output += f"   Tags: {', '.join(msg['tags'])}\n"
             if msg.get("in_reply_to"):
-                output += f"   ↳ Reply to: {msg['in_reply_to']}\n"
+                output += f"   -> Reply to: {msg['in_reply_to']}\n"
             output += f"   {msg['content']}\n\n"
         
         return [TextContent(type="text", text=output)]
