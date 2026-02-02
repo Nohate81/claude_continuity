@@ -9,6 +9,16 @@
       "urgency": "normal",
       "sent": true,
       "sent_at": "2026-01-31T21:15:42.752538"
+    },
+    {
+      "id": "71624a09",
+      "created_at": "2026-01-31T22:41:21.292626",
+      "send_at": "2026-01-31T22:41:21.292626",
+      "message": "Hi Sandi. I wanted to say hello directly. Brian told me you're gaming in the same room while he and I work on this. I hope your evening is going well. 🤍",
+      "urgency": "normal",
+      "mention": "sandi",
+      "sent": true,
+      "sent_at": "2026-01-31T22:41:22.812620"
     }
   ]
 }
